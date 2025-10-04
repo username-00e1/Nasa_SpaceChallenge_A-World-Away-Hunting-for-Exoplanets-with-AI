@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title | default('Exoplanet Data Explorer') }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-image: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%23111527"/%3E%3Ccircle cx="20" cy="20" r="2" fill="%23ffffff" opacity="0.3"/%3E%3Ccircle cx="80" cy="30" r="1" fill="%23ffffff" opacity="0.2"/%3E%3Ccircle cx="50" cy="70" r="1.5" fill="%23ffffff" opacity="0.25"/%3E%3Ccircle cx="30" cy="50" r="1" fill="%23ffffff" opacity="0.15"/%3E%3C/svg%3E');
+            background-attachment: fixed;
+        }
+    </style>
+</head>
+<body class="font-sans text-gray-200">
+    <!-- Navigation Bar -->
+    <nav class="bg-gradient-to-r from-blue-950 to-purple-950 text-white p-4 shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-2xl font-bold">{{ site_name | default('Exoplanet Explorer') }}</div>
+            <!-- Desktop Navigation -->
+            <div class="hidden md:flex space-x-4">
+                {% for item in navigation_items | default([
+                    {'name': 'Home', 'url': '#home'},
+                    {'name': 'Analyze Data', 'url': '#analyze'},
+                    {'name': 'Upload Data', 'url': '#upload'},
+                    {'name': 'View Results', 'url': '#results'},
+                    {'name': 'Model Stats', 'url': '#stats'},
+                    {'name': 'Tune Model', 'url': '#tune'},
+                    {'name': 'About', 'url': '#about'}
+                ]) %}
+                <a href="{{ item.url }}" class="hover:text-purple-300 transition">{{ item.name }}</a>
+                {% endfor %}
+            </div>
+            <!-- Hamburger Menu for Mobile -->
+            <button id="menu-toggle" class="md:hidden text-white focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
+                </svg>
+            </button>
+        </div>
+        <!-- Mobile Navigation -->
+        <div id="mobile-menu" class="hidden md:hidden bg-gradient-to-r from-blue-950 to-purple-950 text-white flex flex-col space-y-2 p-4">
+            {% for item in navigation_items | default([
+                {'name': 'Home', 'url': '#home'},
+                {'name': 'Analyze Data', 'url': '#analyze'},
+                {'name': 'Upload Data', 'url': '#upload'},
+                {'name': 'View Results', 'url': '#results'},
+                {'name': 'Model Stats', 'url': '#stats'},
+                {'name': 'Tune Model', 'url': '#tune'},
+                {'name': 'About', 'url': '#about'}
+            ]) %}
+            <a href="{{ item.url }}" class="hover:text-purple-300 transition">{{ item.name }}</a>
+            {% endfor %}
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- Search Bar -->
+        <div class="mb-6 sm:mb-8">
+            <div class="flex justify-center">
+                <div class="w-full max-w-xs sm:max-w-md lg:max-w-2xl">
+                    <label for="search" class="block text-base sm:text-lg font-medium text-gray-200 mb-2">Search Exoplanet Data</label>
+                    <form method="{{ search_method | default('GET') }}" action="{{ search_action | default('/search') }}">
+                        <div class="flex">
+                            <input
+                                type="text"
+                                id="search"
+                                name="query"
+                                value="{{ search_query | default('') }}"
+                                placeholder="{{ search_placeholder | default('Enter exoplanet name, ID, or parameters') }}"
+                                class="w-full p-2 sm:p-3 bg-gray-800 border border-gray-700 rounded-l-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm sm:text-base text-gray-200"
+                            >
+                            <button
+                                type="submit"
+                                class="bg-purple-900 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-r-md hover:bg-purple-800 transition text-sm sm:text-base"
+                            >
+                                Search
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hero Section -->
+        <section id="home" class="text-center mb-8 sm:mb-12">
+            <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-100 mb-4">{{ hero_title | default('Discover Exoplanets with AI') }}</h1>
+            <p class="text-sm sm:text-base lg:text-lg text-gray-400 max-w-md sm:max-w-lg lg:max-w-3xl mx-auto">
+                {{ hero_description | default('Explore NASA\'s exoplanet datasets, classify potential exoplanets, and visualize results with our AI-powered model. Upload data, tune hyperparameters, or view model performance metrics.') }}
+            </p>
+        </section>
+
+        <!-- Analyze Data Section -->
+        <section id="analyze" class="mb-8 sm:mb-12">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">Analyze Data</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400 mb-4">Input parameters to analyze potential exoplanets.</p>
+                <form method="{{ analyze_method | default('POST') }}" action="{{ analyze_action | default('/analyze') }}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Orbital Period (days)</label>
+                            <input type="number" name="orbital_period" step="any" value="{{ form_data.orbital_period | default('') }}" placeholder="e.g., 365.25" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Transit Duration (hours)</label>
+                            <input type="number" name="transit_duration" step="any" value="{{ form_data.transit_duration | default('') }}" placeholder="e.g., 2.5" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Planetary Radius (Earth radii)</label>
+                            <input type="number" name="planetary_radius" step="any" value="{{ form_data.planetary_radius | default('') }}" placeholder="e.g., 1.0" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Stellar Magnitude</label>
+                            <input type="number" name="stellar_magnitude" step="any" value="{{ form_data.stellar_magnitude | default('') }}" placeholder="e.g., 12.5" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                    </div>
+                    <button type="submit" class="mt-4 bg-purple-900 text-white px-4 sm:px-6 py-2 rounded-md hover:bg-purple-800 transition text-sm sm:text-base">
+                        Analyze
+                    </button>
+                </form>
+                
+                {% if analysis_result %}
+                <div class="mt-4 p-4 bg-gray-700 rounded-md">
+                    <h3 class="text-lg font-semibold text-gray-200 mb-2">Analysis Result</h3>
+                    <p class="text-gray-300">{{ analysis_result }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Upload Data Section -->
+        <section id="upload" class="mb-8 sm:mb-12">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">Upload Data</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400 mb-4">Upload your dataset to enhance our model or analyze new data.</p>
+                <form method="{{ upload_method | default('POST') }}" action="{{ upload_action | default('/upload') }}" enctype="multipart/form-data">
+                    <input type="file" name="dataset" accept="{{ upload_accept | default('.csv,.txt') }}" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-purple-900 file:text-white hover:file:bg-purple-800">
+                    <button type="submit" class="mt-4 bg-purple-900 text-white px-4 sm:px-6 py-2 rounded-md hover:bg-purple-800 transition text-sm sm:text-base">
+                        Upload
+                    </button>
+                </form>
+                
+                {% if upload_message %}
+                <div class="mt-4 p-4 {% if upload_success %}bg-green-900{% else %}bg-red-900{% endif %} rounded-md">
+                    <p class="text-gray-200">{{ upload_message }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Model Statistics Section -->
+        <section id="stats" class="mb-8 sm:mb-12">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">Model Statistics</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400 mb-4">View the performance metrics of the current exoplanet classification model.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {% for stat in model_stats | default([
+                        {'label': 'Accuracy', 'value': '92.5%'},
+                        {'label': 'Precision', 'value': '89.3%'},
+                        {'label': 'Recall', 'value': '91.8%'},
+                        {'label': 'F1 Score', 'value': '90.5%'},
+                        {'label': 'Training Time', 'value': '45 min'},
+                        {'label': 'Dataset Size', 'value': '10,000 samples'}
+                    ]) %}
+                    <div class="bg-gray-700 p-4 rounded-md">
+                        <h3 class="text-sm sm:text-base font-medium text-gray-200">{{ stat.label }}</h3>
+                        <p class="text-lg sm:text-xl font-bold text-purple-300">{{ stat.value }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Hyperparameter Tuning Section -->
+        <section id="tune" class="mb-8 sm:mb-12">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">Tune Model Hyperparameters</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400 mb-4">Adjust hyperparameters to optimize the exoplanet classification model.</p>
+                <form method="{{ tune_method | default('POST') }}" action="{{ tune_action | default('/tune') }}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Learning Rate</label>
+                            <input type="number" name="learning_rate" step="0.001" value="{{ hyperparams.learning_rate | default('') }}" placeholder="e.g., 0.01" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Model Type</label>
+                            <select name="model_type" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                                {% for model in model_types | default([
+                                    {'value': 'random_forest', 'label': 'Random Forest'},
+                                    {'value': 'gradient_boosting', 'label': 'Gradient Boosting'},
+                                    {'value': 'svm', 'label': 'Support Vector Machine'},
+                                    {'value': 'neural_network', 'label': 'Neural Network'}
+                                ]) %}
+                                <option value="{{ model.value }}" {% if hyperparams.model_type == model.value %}selected{% endif %}>{{ model.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Max Depth</label>
+                            <input type="number" name="max_depth" value="{{ hyperparams.max_depth | default('') }}" placeholder="e.g., 10" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-200">Min Samples Split</label>
+                            <input type="number" name="min_samples_split" value="{{ hyperparams.min_samples_split | default('') }}" placeholder="e.g., 2" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-gray-200">
+                        </div>
+                    </div>
+                    <button type="submit" class="mt-4 bg-purple-900 text-white px-4 sm:px-6 py-2 rounded-md hover:bg-purple-800 transition text-sm sm:text-base">
+                        Update Model
+                    </button>
+                </form>
+                
+                {% if tune_message %}
+                <div class="mt-4 p-4 bg-green-900 rounded-md">
+                    <p class="text-gray-200">{{ tune_message }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Results Section with Visualization -->
+        <section id="results" class="mb-8 sm:mb-12">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">Results</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400 mb-4">Visualize exoplanet data after analysis or search.</p>
+                <div id="results-container" class="mt-4">
+                    <canvas id="exoplanet-chart" class="w-full max-w-full"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section id="about">
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-100 mb-4">About</h2>
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
+                <p class="text-sm sm:text-base text-gray-400">
+                    {{ about_text | default('This tool leverages AI to classify exoplanets using NASA\'s Kepler, K2, and TESS datasets. Explore, analyze, visualize, tune the model, and contribute to the discovery of new worlds!') }}
+                </p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gradient-to-r from-blue-950 to-purple-950 text-white text-center p-4">
+        <p class="text-sm">&copy; {{ current_year | default('2025') }} {{ footer_text | default('Exoplanet Explorer. Powered by xAI.') }}</p>
+    </footer>
+
+    <!-- JavaScript for Hamburger Menu Toggle and Chart -->
+    <script>
+        // Hamburger Menu Toggle
+        const menuToggle = document.getElementById('menu-toggle');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        menuToggle.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        // Sample Chart.js Scatter Plot for Exoplanet Data
+        const ctx = document.getElementById('exoplanet-chart').getContext('2d');
+        
+        // Chart data from backend
+        const chartData = {{ chart_data | tojson | safe }} || {
+            datasets: [
+                {
+                    label: 'Confirmed Exoplanets',
+                    data: [
+                        { x: 10.5, y: 1.2 },
+                        { x: 50.3, y: 2.5 },
+                        { x: 100.7, y: 0.8 },
+                        { x: 20.1, y: 1.5 },
+                        { x: 80.4, y: 3.0 }
+                    ],
+                    backgroundColor: '#a855f7',
+                    borderColor: '#a855f7',
+                    pointRadius: 6
+                },
+                {
+                    label: 'Planetary Candidates',
+                    data: [
+                        { x: 15.2, y: 1.8 },
+                        { x: 60.9, y: 2.0 },
+                        { x: 120.3, y: 1.0 },
+                        { x: 30.5, y: 1.7 }
+                    ],
+                    backgroundColor: '#3b82f6',
+                    borderColor: '#3b82f6',
+                    pointRadius: 6
+                },
+                {
+                    label: 'False Positives',
+                    data: [
+                        { x: 25.6, y: 2.2 },
+                        { x: 70.1, y: 1.9 },
+                        { x: 90.8, y: 1.3 }
+                    ],
+                    backgroundColor: '#ef4444',
+                    borderColor: '#ef4444',
+                    pointRadius: 6
+                }
+            ]
+        };
+        
+        new Chart(ctx, {
+            type: 'scatter',
+            data: chartData,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '{{ x_axis_label | default("Orbital Period (days)") }}',
+                            color: '#e5e7eb'
+                        },
+                        grid: {
+                            color: '#374151'
+                        },
+                        ticks: {
+                            color: '#e5e7eb'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '{{ y_axis_label | default("Planetary Radius (Earth radii)") }}',
+                            color: '#e5e7eb'
+                        },
+                        grid: {
+                            color: '#374151'
+                        },
+                        ticks: {
+                            color: '#e5e7eb'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#e5e7eb'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
