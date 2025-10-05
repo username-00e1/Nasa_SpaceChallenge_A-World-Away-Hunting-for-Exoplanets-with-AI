@@ -1,0 +1,453 @@
+
+# exoplanet_detector.py
+# Complete ML Backend for NASA Exoplanet Detection System
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from sklearn.utils import class_weight
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================
+# 1. DATA LOADING AND PREPROCESSING
+# ============================================
+
+class ExoplanetDataProcessor:
+    """Handles data loading, cleaning, and feature engineering"""
+    
+    def __init__(self):
+        self.scaler = StandardScaler()
+        self.label_encoder = LabelEncoder()
+        
+    def load_nasa_data(self, filepath):
+        """
+        Load NASA exoplanet data from CSV
+        Expected columns: koi_period, koi_duration, koi_depth, 
+                         koi_prad, koi_srad, koi_teq, koi_insol, 
+                         koi_disposition (target)
+        """
+        df = pd.read_csv(filepath)
+        print(f"Loaded {len(df)} samples")
+        return df
+    
+    def clean_data(self, df):
+        """Remove missing values and outliers"""
+        # Key features for exoplanet detection
+        features = [
+            'koi_period',      # Orbital period (days)
+            'koi_duration',    # Transit duration (hours)
+            'koi_depth',       # Transit depth (ppm)
+            'koi_prad',        # Planetary radius (Earth radii)
+            'koi_srad',        # Stellar radius (Solar radii)
+            'koi_teq',         # Equilibrium temperature (K)
+            'koi_insol',       # Insolation flux (Earth flux)
+            'koi_steff',       # Stellar effective temperature (K)
+            'koi_slogg',       # Stellar surface gravity (log10(cm/s^2))
+            'koi_impact'       # Impact parameter
+        ]
+        
+        # Target variable
+        target = 'koi_disposition'
+        
+        # Select relevant columns
+        df_clean = df[features + [target]].copy()
+        
+        # Remove rows with missing values
+        df_clean = df_clean.dropna()
+        
+        # Remove outliers using IQR method
+        for col in features:
+            Q1 = df_clean[col].quantile(0.25)
+            Q3 = df_clean[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower = Q1 - 3 * IQR
+            upper = Q3 + 3 * IQR
+            df_clean = df_clean[(df_clean[col] >= lower) & (df_clean[col] <= upper)]
+        
+        print(f"After cleaning: {len(df_clean)} samples")
+        return df_clean, features, target
+    
+    def engineer_features(self, df):
+        """Create additional features for better predictions"""
+        # Transit depth to stellar radius ratio
+        df['transit_ratio'] = df['koi_depth'] / (df['koi_srad'] ** 2)
+        
+        # Signal strength indicator
+        df['signal_strength'] = df['koi_depth'] * df['koi_duration']
+        
+        # Habitable zone indicator (rough approximation)
+        df['habitable_zone'] = ((df['koi_teq'] >= 200) & (df['koi_teq'] <= 350)).astype(int)
+        
+        # Period-radius relationship
+        df['period_radius_ratio'] = df['koi_period'] / (df['koi_prad'] ** 1.5)
+        
+        # Stellar characteristics
+        df['stellar_mass_proxy'] = df['koi_srad'] ** 2 * (10 ** df['koi_slogg'])
+        
+        return df
+    
+    def prepare_data(self, df, features, target):
+        """Split and scale data"""
+        X = df[features]
+        y = df[target]
+        
+        # Encode labels: CONFIRMED = 2, CANDIDATE = 1, FALSE POSITIVE = 0
+        label_map = {
+            'CONFIRMED': 2,
+            'CANDIDATE': 1,
+            'FALSE POSITIVE': 0
+        }
+        y = y.map(label_map)
+        
+        # Split data (80-20)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        
+        # Scale features
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+        
+        return X_train_scaled, X_test_scaled, y_train, y_test, X.columns
+
+
+# ============================================
+# 2. MODEL TRAINING
+# ============================================
+
+class ExoplanetClassifier:
+    """ML model for exoplanet classification"""
+    
+    def __init__(self, model_type='random_forest'):
+        self.model_type = model_type
+        self.model = None
+        self.feature_names = None
+        
+    def build_model(self, class_weights=None):
+        """Initialize the ML model"""
+        if self.model_type == 'random_forest':
+            self.model = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=20,
+                min_samples_split=10,
+                min_samples_leaf=4,
+                max_features='sqrt',
+                class_weight=class_weights,
+                random_state=42,
+                n_jobs=-1
+            )
+        elif self.model_type == 'gradient_boosting':
+            self.model = GradientBoostingClassifier(
+                n_estimators=200,
+                learning_rate=0.1,
+                max_depth=7,
+                min_samples_split=10,
+                min_samples_leaf=4,
+                subsample=0.8,
+                random_state=42
+            )
+        
+        return self.model
+    
+    def train(self, X_train, y_train, feature_names):
+        """Train the model"""
+        self.feature_names = feature_names
+        
+        # Calculate class weights to handle imbalance
+        classes = np.unique(y_train)
+        weights = class_weight.compute_class_weight(
+            'balanced', 
+            classes=classes, 
+            y=y_train
+        )
+        class_weights_dict = dict(zip(classes, weights))
+        
+        print("Class weights:", class_weights_dict)
+        
+        # Build and train model
+        self.build_model(class_weights=class_weights_dict)
+        print(f"\nTraining {self.model_type} model...")
+        self.model.fit(X_train, y_train)
+        print("Training completed!")
+        
+        return self.model
+    
+    def evaluate(self, X_test, y_test):
+        """Evaluate model performance"""
+        y_pred = self.model.predict(X_test)
+        y_prob = self.model.predict_proba(X_test)
+        
+        print("\n" + "="*50)
+        print("MODEL EVALUATION")
+        print("="*50)
+        
+        # Classification report
+        target_names = ['False Positive', 'Candidate', 'Confirmed']
+        print("\nClassification Report:")
+        print(classification_report(y_test, y_pred, target_names=target_names))
+        
+        # Confusion matrix
+        print("\nConfusion Matrix:")
+        cm = confusion_matrix(y_test, y_pred)
+        print(cm)
+        
+        # Feature importance
+        if hasattr(self.model, 'feature_importances_'):
+            print("\nTop 10 Feature Importances:")
+            importances = pd.DataFrame({
+                'feature': self.feature_names,
+                'importance': self.model.feature_importances_
+            }).sort_values('importance', ascending=False)
+            print(importances.head(10))
+        
+        return y_pred, y_prob
+    
+    def cross_validate(self, X, y, cv=5):
+        """Perform cross-validation"""
+        print(f"\nPerforming {cv}-fold cross-validation...")
+        skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=42)
+        scores = cross_val_score(self.model, X, y, cv=skf, scoring='accuracy')
+        
+        print(f"Cross-validation scores: {scores}")
+        print(f"Mean accuracy: {scores.mean():.4f} (+/- {scores.std() * 2:.4f})")
+        
+        return scores
+    
+    def predict(self, X):
+        """Make predictions on new data"""
+        predictions = self.model.predict(X)
+        probabilities = self.model.predict_proba(X)
+        
+        return predictions, probabilities
+    
+    def save_model(self, filepath='exoplanet_model.pkl'):
+        """Save trained model"""
+        model_data = {
+            'model': self.model,
+            'feature_names': self.feature_names,
+            'model_type': self.model_type
+        }
+        joblib.dump(model_data, filepath)
+        print(f"\nModel saved to {filepath}")
+    
+    def load_model(self, filepath='exoplanet_model.pkl'):
+        """Load trained model"""
+        model_data = joblib.load(filepath)
+        self.model = model_data['model']
+        self.feature_names = model_data['feature_names']
+        self.model_type = model_data['model_type']
+        print(f"Model loaded from {filepath}")
+
+
+# ============================================
+# 3. API ENDPOINTS (Flask)
+# ============================================
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+# Global model and scaler
+MODEL = None
+SCALER = None
+PROCESSOR = None
+
+def initialize_system():
+    """Load trained model and scaler"""
+    global MODEL, SCALER, PROCESSOR
+    
+    try:
+        # Load model
+        MODEL = ExoplanetClassifier()
+        MODEL.load_model('exoplanet_model.pkl')
+        
+        # Load scaler
+        SCALER = joblib.load('scaler.pkl')
+        
+        print("System initialized successfully!")
+        return True
+    except Exception as e:
+        print(f"Error initializing system: {e}")
+        return False
+
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    """Endpoint for single prediction"""
+    try:
+        data = request.json
+        
+        # Extract features
+        features = [
+            float(data.get('koi_period', 0)),
+            float(data.get('koi_duration', 0)),
+            float(data.get('koi_depth', 0)),
+            float(data.get('koi_prad', 0)),
+            float(data.get('koi_srad', 0)),
+            float(data.get('koi_teq', 0)),
+            float(data.get('koi_insol', 0)),
+            float(data.get('koi_steff', 5000)),
+            float(data.get('koi_slogg', 4.5)),
+            float(data.get('koi_impact', 0.5))
+        ]
+        
+        # Scale features
+        features_scaled = SCALER.transform([features])
+        
+        # Predict
+        prediction, probabilities = MODEL.predict(features_scaled)
+        
+        # Map prediction to label
+        label_map = {0: 'FALSE POSITIVE', 1: 'CANDIDATE', 2: 'CONFIRMED'}
+        predicted_class = label_map[prediction[0]]
+        
+        response = {
+            'prediction': predicted_class,
+            'confidence': float(probabilities[0][prediction[0]]),
+            'probabilities': {
+                'false_positive': float(probabilities[0][0]),
+                'candidate': float(probabilities[0][1]),
+                'confirmed': float(probabilities[0][2])
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/batch_predict', methods=['POST'])
+def batch_predict():
+    """Endpoint for batch predictions"""
+    try:
+        data = request.json
+        samples = data.get('samples', [])
+        
+        results = []
+        for sample in samples:
+            features = [
+                float(sample.get('koi_period', 0)),
+                float(sample.get('koi_duration', 0)),
+                float(sample.get('koi_depth', 0)),
+                float(sample.get('koi_prad', 0)),
+                float(sample.get('koi_srad', 0)),
+                float(sample.get('koi_teq', 0)),
+                float(sample.get('koi_insol', 0)),
+                float(sample.get('koi_steff', 5000)),
+                float(sample.get('koi_slogg', 4.5)),
+                float(sample.get('koi_impact', 0.5))
+            ]
+            
+            features_scaled = SCALER.transform([features])
+            prediction, probabilities = MODEL.predict(features_scaled)
+            
+            label_map = {0: 'FALSE POSITIVE', 1: 'CANDIDATE', 2: 'CONFIRMED'}
+            
+            results.append({
+                'id': sample.get('id'),
+                'prediction': label_map[prediction[0]],
+                'confidence': float(probabilities[0][prediction[0]])
+            })
+        
+        return jsonify({'results': results})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/model_info', methods=['GET'])
+def model_info():
+    """Get model information"""
+    try:
+        info = {
+            'model_type': MODEL.model_type,
+            'features': list(MODEL.feature_names),
+            'classes': ['FALSE POSITIVE', 'CANDIDATE', 'CONFIRMED']
+        }
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy', 'model_loaded': MODEL is not None})
+
+
+# ============================================
+# 4. MAIN TRAINING PIPELINE
+# ============================================
+
+def main():
+    """Main training pipeline"""
+    print("="*60)
+    print("NASA EXOPLANET DETECTION - ML TRAINING PIPELINE")
+    print("="*60)
+    
+    # Step 1: Load and preprocess data
+    print("\n[1] Loading and preprocessing data...")
+    processor = ExoplanetDataProcessor()
+    
+    # Load data (replace with actual NASA dataset path)
+    # Download from: https://exoplanetarchive.ipac.caltech.edu/
+    df = processor.load_nasa_data('cumulative.csv')
+    
+    # Clean data
+    df_clean, features, target = processor.clean_data(df)
+    
+    # Engineer features
+    df_engineered = processor.engineer_features(df_clean)
+    
+    # Update feature list with engineered features
+    engineered_features = features + [
+        'transit_ratio', 'signal_strength', 'habitable_zone', 
+        'period_radius_ratio', 'stellar_mass_proxy'
+    ]
+    
+    # Prepare data
+    X_train, X_test, y_train, y_test, feature_names = processor.prepare_data(
+        df_engineered, engineered_features, target
+    )
+    
+    # Step 2: Train model
+    print("\n[2] Training model...")
+    classifier = ExoplanetClassifier(model_type='random_forest')
+    classifier.train(X_train, y_train, feature_names)
+    
+    # Step 3: Evaluate model
+    print("\n[3] Evaluating model...")
+    y_pred, y_prob = classifier.evaluate(X_test, y_test)
+    
+    # Step 4: Cross-validation
+    print("\n[4] Cross-validation...")
+    X_combined = np.vstack([X_train, X_test])
+    y_combined = np.concatenate([y_train, y_test])
+    classifier.cross_validate(X_combined, y_combined, cv=5)
+    
+    # Step 5: Save model and scaler
+    print("\n[5] Saving model and scaler...")
+    classifier.save_model('exoplanet_model.pkl')
+    joblib.dump(processor.scaler, 'scaler.pkl')
+    
+    print("\n" + "="*60)
+    print("TRAINING PIPELINE COMPLETED SUCCESSFULLY!")
+    print("="*60)
+    
+    return classifier, processor
+
+if __name__ == '__main__':
+    # For training: uncomment the line below
+    # main()
+    
+    # For API server
+    print("Initializing Exoplanet Detection API...")
+    if initialize_system():
+        print("Starting Flask server on http://localhost:5000")
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    else:
+        print("Failed to initialize system. Please train model first.")
